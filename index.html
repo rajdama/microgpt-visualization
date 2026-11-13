@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>microgpt visualized</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Layout: a sticky transport bar on top. Left: the flow, a token sequence followed by four
+     numbered stage cards in two columns. Right: a sticky explanation and the source listing with a
+     highlighter on the lines being run. Below: loss curve, experiment settings, parameter heatmaps. */
+  --paper:#E7EBEF; --card:#F8FAFB; --ink:#162030; --ink2:#566376; --line:#C6CED7;
+  --mark:#FFCF33; --mark-bg:rgba(255,207,51,.42); --on-mark:#162030;
+  --pos:#E2542B; --neg:#2468D6; --gpos:#178F5F; --gneg:#9A36C0; --cell0:#DDE3E9;
+  --display:"Bricolage Grotesque","IBM Plex Sans",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --barh:110px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#141A25; --card:#1D2532; --ink:#E7ECF3; --ink2:#9AA6B8; --line:#374356;
+    --mark:#FFCF33; --mark-bg:rgba(255,207,51,.22); --on-mark:#162030;
+    --pos:#FF7B4F; --neg:#5B97F7; --gpos:#3CC58B; --gneg:#C873E8; --cell0:#2A3445;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#141A25; --card:#1D2532; --ink:#E7ECF3; --ink2:#9AA6B8; --line:#374356;
+  --mark:#FFCF33; --mark-bg:rgba(255,207,51,.22); --on-mark:#162030;
+  --pos:#FF7B4F; --neg:#5B97F7; --gpos:#3CC58B; --gneg:#C873E8; --cell0:#2A3445;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--body)}
+h1,h2,h3,p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--neg);outline-offset:2px}
+.mono{font-family:var(--mono)}
+
+.hero{max-width:1560px;margin:0 auto;padding:22px 20px 14px;display:flex;flex-wrap:wrap;gap:6px 28px;align-items:baseline}
+.hero h1{font:700 30px/1.1 var(--display);letter-spacing:-.02em;text-wrap:balance}
+.hero p{color:var(--ink2);max-width:68ch}
+
+/* transport bar */
+.bar{position:sticky;top:var(--bartop,0px);z-index:20;background:var(--card);border-block:1px solid var(--line)}
+.barin{max-width:1560px;margin:0 auto;padding:10px 20px;display:flex;flex-direction:column;gap:8px}
+.barrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--paper)}
+.seg button{border:0;background:transparent;padding:6px 12px;cursor:pointer;font-weight:500;color:var(--ink2)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--ink);color:var(--card)}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.seg.sm button{padding:4px 9px;font-size:13px}
+.tp{display:inline-flex;gap:6px;align-items:center}
+.ib,.btn{border:1px solid var(--line);background:var(--paper);border-radius:8px;cursor:pointer}
+.ib{width:36px;height:36px;display:inline-grid;place-items:center}
+.ib svg,.play svg{width:14px;height:14px;fill:currentColor}
+.btn{padding:6px 12px;font-weight:500}
+.ib:hover,.btn:hover{border-color:var(--ink2)}
+.ib:disabled,.btn:disabled{opacity:.45;cursor:not-allowed}
+.play{display:inline-flex;align-items:center;gap:8px;height:36px;min-width:104px;justify-content:center;padding:0 16px;border:1px solid var(--on-mark);
+  background:var(--mark);color:var(--on-mark);border-radius:8px;font-weight:600;cursor:pointer}
+.play:disabled{opacity:.5;cursor:not-allowed}
+.scrubwrap{flex:1 1 220px;display:flex;align-items:center;gap:8px;min-width:180px}
+.scrubwrap input{flex:1;accent-color:var(--ink);min-width:0}
+.scrubwrap span,.lbl{font-size:12px;color:var(--ink2)}
+.status{flex:1 1 300px;font:500 13px var(--mono);min-width:0}
+.ctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ctl label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2)}
+.ctl input[type=range]{accent-color:var(--ink);width:120px}
+.ctl input[type=text]{border:1px solid var(--line);background:var(--paper);border-radius:6px;padding:4px 8px;width:110px;font-family:var(--mono)}
+.ctl output{font:500 13px var(--mono);color:var(--ink);min-width:32px}
+.spark{display:inline-flex;align-items:center;gap:6px;font:500 12px var(--mono);color:var(--ink2)}
+.spark canvas{width:110px;height:28px}
+
+/* page grid */
+.wrap{max-width:1560px;margin:0 auto;padding:16px 20px 40px;display:flex;flex-direction:column;gap:16px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.flow{display:flex;flex-direction:column;gap:12px;min-width:0;--cpos:var(--pos);--cneg:var(--neg)}
+.flow.gradmode{--cpos:var(--gpos);--cneg:var(--gneg)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.side{display:flex;flex-direction:column;gap:12px;min-width:0}
+@media (min-width:760px){.cols{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1180px){
+  .grid{grid-template-columns:minmax(0,1.5fr) minmax(360px,.9fr)}
+  .side{position:sticky;top:calc(var(--barh) + 12px);align-self:start}
+}
+
+/* sequence card */
+.seqhead{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:baseline;margin-bottom:10px}
+.seqhead b{font-weight:600}
+.seqhead .ml{margin-left:auto;font-family:var(--mono)}
+.seqscroll{overflow-x:auto;padding-bottom:2px}
+.seqrow{display:flex;gap:4px;align-items:stretch;min-width:min-content}
+.seqkey,.tc{display:grid;grid-template-rows:14px 26px 14px 26px 16px;gap:2px;justify-items:center;align-items:center}
+.seqkey{justify-items:start;font-size:11px;color:var(--ink2);padding-right:6px}
+.tc{border:1px solid transparent;border-radius:8px;background:transparent;padding:4px 5px;cursor:pointer;min-width:46px}
+.tc:hover{border-color:var(--line)}
+.tc.cur{background:var(--mark-bg);border-color:var(--mark)}
+.tc .pi{font:11px var(--mono);color:var(--ink2)}
+.chip{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 6px;border-radius:6px;border:1px solid var(--line);
+  background:var(--paper);font:600 14px var(--mono)}
+.chip.bos{font-size:10px;letter-spacing:.02em;color:var(--ink2)}
+.chip.tg{border-style:dashed}
+.tc .ar{font-size:10px;color:var(--ink2);line-height:1}
+.tc .lv{font:11px var(--mono);color:var(--ink2)}
+.seqmsg{color:var(--ink2)}
+
+/* stage cards */
+.stage{padding:12px 0 6px}
+.stage>h2{font:700 17px/1.2 var(--display);padding:0 14px 8px;display:flex;gap:9px;align-items:baseline}
+.num{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--card);font:600 12px var(--mono);flex:none;transform:translateY(-1px)}
+.grp{padding:8px 14px 8px 11px;border-left:3px solid transparent;display:flex;flex-direction:column;gap:5px;
+  transition:opacity .25s,background-color .25s;scroll-margin-top:calc(var(--barh) + 60px)}
+.grp+.grp{border-top:1px dashed var(--line)}
+.grp h3{font:600 12px var(--body);color:var(--ink2)}
+.grp.pending{opacity:.4}
+.grp.active{border-left-color:var(--mark);background:var(--mark-bg)}
+.flow.bw .grp{animation:sweep .7s ease-out both;animation-delay:calc((6 - var(--i)) * 170ms)}
+.flow.bw .grp .c{transition-delay:calc((6 - var(--i)) * 170ms)}
+@keyframes sweep{0%{background:var(--mark-bg)}100%{background:transparent}}
+
+.row{display:grid;grid-template-columns:104px minmax(0,1fr) 52px;align-items:center;gap:8px;min-height:18px}
+.lab{font:12px var(--mono);color:var(--ink2);white-space:nowrap}
+.rng{font:11px var(--mono);color:var(--ink2);text-align:right;white-space:nowrap}
+.strip{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:1px;height:16px}
+.strip.w64{grid-template-columns:repeat(32,minmax(0,1fr));grid-auto-rows:1fr;height:24px}
+.strip.h4 .c:nth-child(4n+1):not(:first-child){margin-left:3px}
+.c{display:block;background:var(--cell0);transition:background-color .25s;border-radius:1px;font-style:normal}
+.c.p{background:color-mix(in srgb,var(--cpos) var(--t),var(--cell0))}
+.c.n{background:color-mix(in srgb,var(--cneg) var(--t),var(--cell0))}
+.c.m{background:color-mix(in srgb,var(--ink) var(--t),var(--cell0))}
+.c.fut{background:repeating-linear-gradient(45deg,var(--cell0) 0 2px,transparent 2px 5px)}
+.caches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cache h4{margin:0 0 3px;font:11px var(--body);color:var(--ink2);font-weight:500}
+.crow{display:grid;grid-template-columns:22px minmax(0,1fr);gap:4px;align-items:center;height:11px}
+.crow .lab{font-size:10px;text-align:center}
+.crow .strip{height:9px}
+.crow.new .strip{outline:1.5px solid var(--mark);outline-offset:1px}
+.agrid{display:flex;flex-direction:column;gap:2px;overflow-x:auto}
+.arow{display:grid;grid-template-columns:52px repeat(var(--n),minmax(18px,32px));gap:2px;align-items:center}
+.arow .ah{font:10px var(--mono);text-align:center;color:var(--ink2)}
+.arow .ah.cur{color:var(--ink);font-weight:600}
+.arow .c{height:20px;display:grid;place-items:center;font:10px var(--mono);color:var(--ink)}
+.arow .c.hi{color:var(--card)}
+.flow.gradmode .arow .c{color:transparent}
+.bars{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:1px}
+.b{display:flex;flex-direction:column;min-width:0}
+.tr{position:relative;height:56px;border-bottom:1px solid var(--line)}
+.bars.div .tr::after{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px solid var(--line)}
+.f{position:absolute;left:0;right:0;height:0;top:100%;transition:height .25s,top .25s;display:block}
+.f.p{background:var(--cpos)}.f.n{background:var(--cneg)}.f.m{background:var(--ink)}
+.b span{font:10px/15px var(--mono);text-align:center;color:var(--ink2);border-radius:2px;overflow:hidden}
+.b.tgt span,.b.pick span{background:var(--mark);color:var(--on-mark);font-weight:600}
+.b.tgt .tr,.b.pick .tr{background:var(--mark-bg)}
+.note{font-size:13px;min-height:40px}
+.note b{font-weight:600}
+.legend{display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--ink2)}
+.legend .lr{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ramp{display:inline-grid;grid-template-columns:repeat(9,14px);gap:1px}
+.ramp i{height:12px;display:block}
+
+/* side */
+.now h2{font:700 20px/1.2 var(--display);margin-bottom:6px;text-wrap:balance}
+.now p{max-width:62ch}
+.now{min-height:178px}
+.tk{font:600 13px var(--mono);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.codecard{padding:0;overflow:hidden}
+.codehead{display:flex;justify-content:space-between;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);font:500 12px var(--mono)}
+.codehead span{color:var(--ink2);font-family:var(--body);font-weight:400}
+.code{position:relative;margin:0;padding:6px 0;list-style:none;counter-reset:ln;overflow:auto;max-height:min(44vh,400px);font:12px/1.55 var(--mono)}
+.code li{counter-increment:ln;white-space:pre;padding:0 14px 0 0;display:block;width:max-content;min-width:100%}
+.code li::before{content:counter(ln);display:inline-block;width:38px;padding-right:10px;text-align:right;color:var(--ink2);opacity:.7}
+.code li.hl{background:var(--mark-bg)}
+.code .cm{color:var(--ink2)}
+.samples{display:flex;flex-wrap:wrap;gap:5px;max-height:96px;overflow:auto;margin-top:6px}
+.samples span{font:13px var(--mono);padding:1px 7px;border-radius:5px;background:var(--paper);border:1px solid var(--line)}
+.samples span.new{border-color:var(--ink);border-style:dashed}
+.side h3{font:600 13px var(--body)}
+.cap{font-size:12px;color:var(--ink2)}
+
+/* below */
+.below{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:900px){.below{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}.wide{grid-column:1/-1}}
+.below h2{font:700 18px/1.2 var(--display);margin-bottom:8px}
+#lossc{width:100%;height:220px;display:block}
+.form{display:grid;gap:10px}
+.form textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:8px;font:13px var(--mono);resize:vertical}
+.form .f3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.form label{display:grid;gap:3px;font-size:12px;color:var(--ink2)}
+.form input{border:1px solid var(--line);border-radius:6px;background:var(--paper);padding:5px 8px;font-family:var(--mono);width:100%}
+.err{color:var(--pos);font-size:13px;min-height:18px}
+.mathead{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:10px}
+.mats{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-start}
+.mat{display:flex;flex-direction:column;gap:3px;max-width:100%}
+.mat canvas{image-rendering:pixelated;max-width:100%;height:auto;border:1px solid var(--line)}
+.mat b{font:600 12px var(--mono)}
+.mat span{font-size:11px;color:var(--ink2)}
+footer{color:var(--ink2);font-size:12px;max-width:80ch}
+footer a{color:inherit}
+#tip{position:fixed;z-index:50;display:none;pointer-events:none;background:var(--ink);color:var(--card);font:12px var(--mono);
+  padding:4px 8px;border-radius:5px;max-width:320px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+@media (max-width:700px){.barin{flex-direction:column-reverse}.scrubwrap{display:none}}
+@media (max-width:520px){.row{grid-template-columns:92px minmax(0,1fr) 44px;gap:6px}.lab{font-size:11px}.rng{font-size:10px}.hero h1{font-size:24px}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>microgpt, one operation at a time</h1>
+  <p>Andrej Karpathy's dependency-free GPT, running for real in this page. Press play and follow one character through the network. Every square is a number the model is holding right now.</p>
+</header>
+
+<div class="bar" id="bar"><div class="barin">
+  <div class="barrow">
+    <div class="seg" role="group" aria-label="Mode">
+      <button type="button" id="modeTrain" class="on">Train</button>
+      <button type="button" id="modeGen">Generate</button>
+    </div>
+    <div class="tp">
+      <button type="button" class="ib" id="bRestart" title="Back to the first frame" aria-label="Back to the first frame"><svg viewBox="0 0 16 16"><path d="M8 3v10L2 8zM14 3v10L8 8z"/></svg></button>
+      <button type="button" class="ib" id="bBack" title="Step back (left arrow)" aria-label="Step back"><svg viewBox="0 0 16 16"><path d="M4 3h2v10H4zM12 3v10L7 8z"/></svg></button>
+      <button type="button" class="play" id="bPlay" title="Play or pause (space)"><svg viewBox="0 0 16 16" id="playIcon"><path d="M4 2l10 6-10 6z"/></svg><span id="playTxt">Play</span></button>
+      <button type="button" class="ib" id="bFwd" title="Step forward (right arrow)" aria-label="Step forward"><svg viewBox="0 0 16 16"><path d="M10 3h2v10h-2zM4 3l5 5-5 5z"/></svg></button>
+    </div>
+    <div class="seg sm" role="group" aria-label="Speed" id="speedSeg">
+      <button type="button" data-s="0.5">0.5×</button><button type="button" data-s="1" class="on">1×</button><button type="button" data-s="2">2×</button><button type="button" data-s="4">4×</button><button type="button" data-s="8">8×</button>
+    </div>
+    <div class="scrubwrap">
+      <input type="range" id="scrub" min="0" max="1" value="0" aria-label="Scrub through this step">
+      <span id="scrubv" class="mono"></span>
+    </div>
+  </div>
+  <div class="barrow">
+    <div class="status" id="status" aria-live="off"></div>
+    <div class="ctl" id="trainCtl">
+      <span class="spark" title="Loss so far"><canvas id="spark" width="110" height="28"></canvas><span id="sparkv"></span></span>
+      <button type="button" class="btn" id="bFinish">Finish this step</button>
+      <button type="button" class="btn" id="b100">Train 100 steps</button>
+      <button type="button" class="btn" id="bAll">Train to the end</button>
+    </div>
+    <div class="ctl" id="genCtl" hidden>
+      <label for="temp">Temperature <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.5"><output id="tempv" for="temp">0.50</output></label>
+      <label for="prefix">Start with <input type="text" id="prefix" maxlength="12" placeholder="e.g. ka" autocomplete="off" spellcheck="false"></label>
+      <button type="button" class="btn" id="bNew">New name</button>
+    </div>
+  </div>
+</div></div>
+
+<main class="wrap">
+  <div class="grid">
+    <section class="flow" id="flow" aria-label="Flow through the model">
+      <div class="card" id="seq"></div>
+      <div class="cols">
+        <div class="col">
+          <article class="card stage">
+            <h2><span class="num">1</span>Embed the token</h2>
+            <div class="grp" id="g0" style="--i:0"></div>
+          </article>
+          <article class="card stage">
+            <h2><span class="num">2</span>Attention: look back at earlier tokens</h2>
+            <div class="grp" id="g1" style="--i:1"><h3>Make a query, and store a key and a value</h3></div>
+            <div class="grp" id="g2" style="--i:2"><h3>How much each head attends to each token (percent)</h3></div>
+            <div class="grp" id="g3" style="--i:3"><h3>Write the result back into x</h3></div>
+          </article>
+        </div>
+        <div class="col">
+          <article class="card stage">
+            <h2><span class="num">3</span>MLP: think about this position</h2>
+            <div class="grp" id="g4" style="--i:4"></div>
+          </article>
+          <article class="card stage">
+            <h2><span class="num">4</span>Predict the next token</h2>
+            <div class="grp" id="g5" style="--i:5"><h3>Logits: one raw score per token</h3></div>
+            <div class="grp" id="g6" style="--i:6"><h3 id="probH">Probabilities after softmax</h3></div>
+          </article>
+          <div class="card legend">
+            <div class="lr">
+              <span>Squares show</span>
+              <div class="seg sm" role="group" aria-label="What the squares show" id="viewSeg">
+                <button type="button" data-v="value" class="on">Values</button><button type="button" data-v="grad">Gradients</button>
+              </div>
+              <span id="viewHint">Gradients exist after the backward pass.</span>
+            </div>
+            <div class="lr"><span>negative</span><span class="ramp" id="ramp"></span><span>positive</span></div>
+            <div>Each strip is scaled to its own largest number, printed at its right end. Hover a square for the exact value. <span class="mono">•</span> stands for BOS, the token that marks where a name starts and ends.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side" id="side">
+      <div class="card now"><h2 id="nowT"></h2><p id="nowP"></p></div>
+      <div class="card codecard">
+        <div class="codehead">microgpt.py <span>highlighted lines are running now</span></div>
+        <ol class="code" id="code"></ol>
+      </div>
+      <div class="card" id="samplesCard">
+        <h3>Names the model has written</h3>
+        <div class="samples" id="samples"></div>
+        <p class="cap" id="samplesCap">Switch to Generate to make the model write names.</p>
+      </div>
+    </aside>
+  </div>
+
+  <section class="below">
+    <div class="card">
+      <h2>Loss over training</h2>
+      <canvas id="lossc"></canvas>
+      <p class="cap">Thin line: loss on each name. Thick line: average of the last 25. Dashed line: the loss of a blind guess over the whole vocabulary.</p>
+    </div>
+    <div class="card">
+      <h2>Change the experiment</h2>
+      <form class="form" id="form">
+        <label for="words">Your own training words, one per line or separated by spaces. Leave empty to use the built-in list of names.
+          <textarea id="words" spellcheck="false" placeholder="tokyo&#10;kyoto&#10;osaka&#10;nagoya&#10;…"></textarea>
+        </label>
+        <div class="f3">
+          <label for="lr">Learning rate <input id="lr" type="number" step="0.001" min="0.0001" max="1" value="0.01"></label>
+          <label for="steps">Training steps <input id="steps" type="number" step="50" min="10" max="20000" value="1000"></label>
+          <label for="seed">Random seed <input id="seed" type="number" step="1" value="42"></label>
+        </div>
+        <div class="err" id="err" role="alert"></div>
+        <div><button type="submit" class="btn">Rebuild the model and start over</button></div>
+      </form>
+    </div>
+    <div class="card wide">
+      <div class="mathead">
+        <h2 style="margin:0" id="matTitle">All parameters</h2>
+        <div class="seg sm" role="group" aria-label="What the parameter maps show" id="matSeg">
+          <button type="button" data-k="auto" class="on">Follow the flow</button><button type="button" data-k="w">Weights</button><button type="button" data-k="grad">Gradients</button><button type="button" data-k="upd">Next update</button>
+        </div>
+        <span class="cap" id="matNote"></span>
+      </div>
+      <div class="mats" id="mats"></div>
+    </div>
+  </section>
+
+  <footer>
+    The model and training loop are a line-for-line JavaScript port of <a href="https://gist.github.com/karpathy/8627fe009c40f57531cb18360106ce95">microgpt.py by Andrej Karpathy</a>.
+    The random numbers differ from Python's, so individual values will not match a Python run with seed 42, and the built-in name list is shorter than the original names.txt.
+  </footer>
+</main>
+<div id="tip" role="tooltip"></div>
+
+<script type="text/plain" id="names">
+emma olivia ava isabella sophia charlotte mia amelia harper evelyn abigail emily elizabeth mila ella avery sofia camila aria scarlett victoria madison luna grace chloe penelope layla riley zoey nora lily eleanor hannah lillian addison aubrey ellie stella natalie zoe leah hazel violet aurora savannah audrey brooklyn bella claire skylar lucy paisley everly anna caroline nova genesis emilia kennedy samantha maya willow kinsley naomi aaliyah elena sarah ariana allison gabriella alice madelyn cora ruby eva serenity autumn adeline hailey gianna valentina isla eliana quinn nevaeh ivy sadie piper lydia alexa josephine emery julia delilah arianna vivian kaylee sophie brielle madeline peyton rylee clara hadley melanie mackenzie reagan adalynn liliana aubree jade katherine isabelle natalia raelynn maria athena ximena arya leilani taylor faith rose kylie alexandra mary margaret lyla ashley amaya eliza brianna bailey andrea khloe jasmine melody iris isabel norah annabelle valeria emerson adalyn ryleigh eden emersyn anastasia kayla alyssa juliana charlie esther ariel cecilia valerie alina molly reese aliyah lilly parker finley morgan sydney jordyn eloise trinity daisy kimberly lauren genevieve sara arabella harmony elise remi teagan alexis london sloane laila lucia diana juliette sienna elliana londyn ayla callie gracie josie amara jocelyn daniela everleigh mya rachel summer alana brooke alaina mckenzie catherine amy presley journee rosalie ember brynlee rowan joanna paige rebecca ana sawyer mariah nicole brooklynn payton marley fiona georgia lila harley adelyn alivia noelle gemma vanessa journey makayla angelina adaline catalina alayna julianna leila lola adriana june juliet jayla river tessa lia dakota delaney selena blakely ada camille zara malia hope samara vera mckenna briella izabella hayden raegan michelle angela ruth freya kamila vivienne aspen olive kendall elaina thea kali destiny amiyah evangeline cali blake elsie juniper alexandria myla ariella kate mariana lilah charlee daleyza nyla jane maggie zuri aniyah lucille leia melissa adelaide amina giselle lena camilla miriam millie brynn gabrielle sage annie logan lilliana haven jessica kaia magnolia amira adelynn makenzie stephanie nina phoebe arielle evie lyric alessandra gabriela paislee raelyn madilyn paris makenna kinley gracelyn talia maeve rylie kiara evelynn brinley jacqueline laura gracelynn lexi ariah fatima jennifer kehlani alani ariyah luciana allie heidi maci phoenix felicity joy kenzie veronica margot addilyn lana cassidy remington saylor ryan keira harlow miranda angel amanda daniella royalty gwendolyn ophelia heaven jordan madeleine esmeralda kira miracle elle amari danielle daphne willa haley gia kaitlyn oakley kailani winter alicia serena nadia aviana demi jada braelynn dylan ainsley alison camryn avianna bianca skyler scarlet maddison nylah sarai regina dahlia nayeli raven helen adrianna averie skye kelsey tatum kensley maliyah erin viviana jenna anaya carolina shelby sabrina mikayla annalise octavia lennon blair carmen yaretzi kennedi mabel zariah kyla christina selah celeste eve mckinley milani frances jimena kylee leighton katie aitana kayleigh sierra kathryn rosemary jolene alondra elisa helena charleigh hallie lainey avah jazlyn kamryn mira cheyenne francesca antonella wren chelsea amber emory lorelei nia abby april emelia carter aylin cataleya bethany marlee carly kaylani emely liana madelynn cadence matilda sylvia myra fernanda oaklyn elianna hattie dayana kendra maisie malaysia kara katelyn maia celine cameron renata jayleen charli emmalyn holly azalea leona alejandra bristol collins imani meadow alexia edith kaydence leslie lilith kora aisha meredith danna wynter emberly julieta michaela alayah jemma reign colette kaliyah elliott johanna remy sutton emmy virginia briana oaklynn adelina everlee megan angelica justice mariam khaleesi macie karsyn alanna aleah mae mallory esme skyla madilynn charley allyson hanna shiloh henley macy maryam ivanna ashlynn lorelai amora ashlyn sasha baylee beatrice itzel priscilla marie jayda liberty rory alessia alaia janelle kalani gloria sloan dorothy greta julie zahra savanna annabella poppy amalia zaylee cecelia coraline kimber emmie anne karina kassidy kynlee monroe anahi jaliyah jazmin maren monica siena marilyn reyna kyra lilian jamie melany alaya ariya kelly rosie adley dream jaylah laurel jazmine mina karla bailee aubrie katalina melina harlee elliot hayley elaine karen dallas irene lylah ivory chaya rosa aleena braelyn nola alma leyla pearl addyson roselyn lacey lennox reina aurelia noa janiyah jessie madisyn saige alia tiana astrid cassandra kyleigh romina stevie haylee zelda lillie aileen brylee eileen yara ensley lauryn giuliana livia anya mikaela palmer lyra mara marina kailey liv clementine kenna briar emerie galilea tiffany bonnie elyse cynthia frida kinslee tatiana joelle armani jolie nathalie bridget
+liam noah william james oliver benjamin elijah lucas mason alexander ethan jacob michael daniel henry jackson sebastian aiden matthew samuel david joseph owen wyatt john jack luke jayden grayson levi isaac gabriel julian mateo anthony jaxon lincoln joshua christopher andrew theodore caleb asher nathan thomas leo isaiah charles josiah hudson christian hunter connor eli ezra aaron landon adrian jonathan nolan jeremiah easton elias colton carson robert maverick nicholas dominic jaxson greyson adam ian austin santiago cooper brayden roman evan ezekiel xavier jose jace jameson leonardo bryson axel everett kayden miles jason declan weston micah ayden wesley luca vincent damian zachary silas gavin chase kai emmett harrison nathaniel kingston cole tyler bennett bentley ryker tristan brandon kevin luis george ashton rowan braxton ryder gael ivan diego maxwell max carlos kaiden juan maddox justin waylon calvin giovanni jonah abel jayce jesus amir king beau camden alex jasper malachi brody jude blake emmanuel eric brooks elliot antonio abraham timothy finn rhett elliott edward august xander alan dean lorenzo bryce karter victor milo miguel hayden graham grant zion tucker jesse zayden joel richard patrick emiliano avery nicolas brantley dawson myles matteo river steven thiago zane matias judah messiah jeremy preston oscar kaleb alejandro marcus mark peter maximus barrett jax andres holden legend charlie knox kaden paxton kyrie kyle griffin josue kenneth beckett enzo adriel arthur felix bryan lukas paul brian colt caden leon archer omar israel aidan theo javier remington jaden bradley emilio colin riley cayden phoenix clayton simon ace nash derek rafael zander brady jorge jake louis damien karson walker maximiliano amari sean chance walter martin finley andre tobias cash corbin arlo iker erick emerson gunner cody stephen francisco killian dallas reid manuel lane atlas rylan jensen ronan beckham daxton anderson kameron raymond orion cristian tanner kyler jett cohen ricardo spencer gideon ali fernando jaiden titus travis bodhi eduardo dante ellis prince kane luka kash hendrix desmond donovan mario atticus cruz garrett hector angelo jeffrey edwin cesar zayn devin conor warren odin jayceon romeo julius jaylen hayes kayson muhammad jaxton joaquin caiden dakota major keegan sergio marshall johnny kade edgar leonel ismael marco tyson wade collin troy nasir conner adonis jared rory andy jase lennox shane malik ari reed seth clark erik lawson trevor gage nico malakai quinn cade johnathan sullivan solomon cyrus fabian pedro frank shawn malcolm khalil nehemiah dalton mathias jay ibrahim peyton winston kason zayne noel princeton matthias gregory sterling dominick elian grady russell finnegan ruben gianni porter kendrick leland pablo allen hugo raiden kolton remy ezequiel damon emanuel zaiden otto bowen marcos abram kasen franklin royce jonas sage philip esteban drake kashton roberto harvey alexis kian jamison maximilian adan milan phillip albert dax mohamed ronin kamden hank memphis oakley augustus drew moises armani rhys benson jayson kyson braylen corey gunnar omari alonzo landen armando derrick dexter enrique bruce nikolai francis rocco kairo royal zachariah arjun deacon skyler eden alijah rowen pierce uriel ronald luciano tate frederick kieran lawrence moses rodrigo brycen leonidas nixon keith chandler case davis asa darius isaias aden jaime landyn raul niko trenton apollo cairo izaiah scott dorian julio wilder santino dustin donald raphael saul taylor ayaan duke ryland tatum ahmed moshe edison emmitt cannon alec danny keaton roy conrad roland quentin lewis samson brock kylan cason ahmad jalen nikolas braylon kamari dennis callum justice soren rayan aarav gerardo ares brendan jamari kaison yusuf issac jasiah callen forrest makai crew kobe bo julien mathew braden johan marvin zaid stetson casey ty ariel tony zain callan cullen sincere uriah dillon kannon colby axton cassius quinton mekhi reece alessandro jerry mauricio sam trey mohammad alberto gustavo arturo fletcher marcelo abdiel hamza alfredo chris finnley curtis kellan quincy kase harry kyree wilson cayson hezekiah kohen neil mohammed raylan kaysen lucca sylas mack leonard lionel ford roger rex alden boston colson briggs zeke dariel kingsley valentino jamir salvador vihaan mitchell lance jordan dylan parker sawyer cameron angel carter logan ryan
+</script>
+
+<script type="text/plain" id="src">"""
+The most atomic way to train and run inference for a GPT in pure, dependency-free Python.
+This file is the complete algorithm.
+Everything else is just efficiency.
+@karpathy
+"""
+import os       # os.path.exists
+import math     # math.log, math.exp
+import random   # random.seed, random.choices, random.gauss, random.shuffle
+random.seed(42) # Let there be order among chaos
+# Let there be a Dataset `docs`: list[str] of documents (e.g. a list of names)
+if not os.path.exists('input.txt'):
+    import urllib.request
+    names_url = 'https://raw.githubusercontent.com/karpathy/makemore/988aa59/names.txt'
+    urllib.request.urlretrieve(names_url, 'input.txt')
+docs = [line.strip() for line in open('input.txt') if line.strip()]
+random.shuffle(docs)
+print(f"num docs: {len(docs)}")
+# Let there be a Tokenizer to translate strings to sequences of integers ("tokens") and back
+uchars = sorted(set(''.join(docs))) # unique characters in the dataset become token ids 0..n-1
+BOS = len(uchars) # token id for a special Beginning of Sequence (BOS) token
+vocab_size = len(uchars) + 1 # total number of unique tokens, +1 is for BOS
+print(f"vocab size: {vocab_size}")
+# Let there be Autograd to recursively apply the chain rule through a computation graph
+class Value:
+    __slots__ = ('data', 'grad', '_children', '_local_grads') # Python optimization for memory usage
+    def __init__(self, data, children=(), local_grads=()):
+        self.data = data                # scalar value of this node calculated during forward pass
+        self.grad = 0                   # derivative of the loss w.r.t. this node, calculated in backward pass
+        self._children = children       # children of this node in the computation graph
+        self._local_grads = local_grads # local derivative of this node w.r.t. its children
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        return Value(self.data + other.data, (self, other), (1, 1))
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        return Value(self.data * other.data, (self, other), (other.data, self.data))
+    def __pow__(self, other): return Value(self.data**other, (self,), (other * self.data**(other-1),))
+    def log(self): return Value(math.log(self.data), (self,), (1/self.data,))
+    def exp(self): return Value(math.exp(self.data), (self,), (math.exp(self.data),))
+    def relu(self): return Value(max(0, self.data), (self,), (float(self.data > 0),))
+    def __neg__(self): return self * -1
+    def __radd__(self, other): return self + other
+    def __sub__(self, other): return self + (-other)
+    def __rsub__(self, other): return other + (-self)
+    def __rmul__(self, other): return self * other
+    def __truediv__(self, other): return self * other**-1
+    def __rtruediv__(self, other): return other * self**-1
+    def backward(self):
+        topo = []
+        visited = set()
+        def build_topo(v):
+            if v not in visited:
+                visited.add(v)
+                for child in v._children:
+                    build_topo(child)
+                topo.append(v)
+        build_topo(self)
+        self.grad = 1
+        for v in reversed(topo):
+            for child, local_grad in zip(v._children, v._local_grads):
+                child.grad += local_grad * v.grad
+# Initialize the parameters, to store the knowledge of the model
+n_layer = 1     # depth of the transformer neural network (number of layers)
+n_embd = 16     # width of the network (embedding dimension)
+block_size = 16 # maximum context length of the attention window (note: the longest name is 15 characters)
+n_head = 4      # number of attention heads
+head_dim = n_embd // n_head # derived dimension of each head
+matrix = lambda nout, nin, std=0.08: [[Value(random.gauss(0, std)) for _ in range(nin)] for _ in range(nout)]
+state_dict = {'wte': matrix(vocab_size, n_embd), 'wpe': matrix(block_size, n_embd), 'lm_head': matrix(vocab_size, n_embd)}
+for i in range(n_layer):
+    state_dict[f'layer{i}.attn_wq'] = matrix(n_embd, n_embd)
+    state_dict[f'layer{i}.attn_wk'] = matrix(n_embd, n_embd)
+    state_dict[f'layer{i}.attn_wv'] = matrix(n_embd, n_embd)
+    state_dict[f'layer{i}.attn_wo'] = matrix(n_embd, n_embd)
+    state_dict[f'layer{i}.mlp_fc1'] = matrix(4 * n_embd, n_embd)
+    state_dict[f'layer{i}.mlp_fc2'] = matrix(n_embd, 4 * n_embd)
+params = [p for mat in state_dict.values() for row in mat for p in row] # flatten params into a single list[Value]
+print(f"num params: {len(params)}")
+# Define the model architecture: a function mapping tokens and parameters to logits over what comes next
+# Follow GPT-2, blessed among the GPTs, with minor differences: layernorm -> rmsnorm, no biases, GeLU -> ReLU
+def linear(x, w):
+    return [sum(wi * xi for wi, xi in zip(wo, x)) for wo in w]
+def softmax(logits):
+    max_val = max(val.data for val in logits)
+    exps = [(val - max_val).exp() for val in logits]
+    total = sum(exps)
+    return [e / total for e in exps]
+def rmsnorm(x):
+    ms = sum(xi * xi for xi in x) / len(x)
+    scale = (ms + 1e-5) ** -0.5
+    return [xi * scale for xi in x]
+def gpt(token_id, pos_id, keys, values):
+    tok_emb = state_dict['wte'][token_id] # token embedding
+    pos_emb = state_dict['wpe'][pos_id] # position embedding
+    x = [t + p for t, p in zip(tok_emb, pos_emb)] # joint token and position embedding
+    x = rmsnorm(x) # note: not redundant due to backward pass via the residual connection
+    for li in range(n_layer):
+        # 1) Multi-head Attention block
+        x_residual = x
+        x = rmsnorm(x)
+        q = linear(x, state_dict[f'layer{li}.attn_wq'])
+        k = linear(x, state_dict[f'layer{li}.attn_wk'])
+        v = linear(x, state_dict[f'layer{li}.attn_wv'])
+        keys[li].append(k)
+        values[li].append(v)
+        x_attn = []
+        for h in range(n_head):
+            hs = h * head_dim
+            q_h = q[hs:hs+head_dim]
+            k_h = [ki[hs:hs+head_dim] for ki in keys[li]]
+            v_h = [vi[hs:hs+head_dim] for vi in values[li]]
+            attn_logits = [sum(q_h[j] * k_h[t][j] for j in range(head_dim)) / head_dim**0.5 for t in range(len(k_h))]
+            attn_weights = softmax(attn_logits)
+            head_out = [sum(attn_weights[t] * v_h[t][j] for t in range(len(v_h))) for j in range(head_dim)]
+            x_attn.extend(head_out)
+        x = linear(x_attn, state_dict[f'layer{li}.attn_wo'])
+        x = [a + b for a, b in zip(x, x_residual)]
+        # 2) MLP block
+        x_residual = x
+        x = rmsnorm(x)
+        x = linear(x, state_dict[f'layer{li}.mlp_fc1'])
+        x = [xi.relu() for xi in x]
+        x = linear(x, state_dict[f'layer{li}.mlp_fc2'])
+        x = [a + b for a, b in zip(x, x_residual)]
+    logits = linear(x, state_dict['lm_head'])
+    return logits
+# Let there be Adam, the blessed optimizer and its buffers
+learning_rate, beta1, beta2, eps_adam = 0.01, 0.85, 0.99, 1e-8
+m = [0.0] * len(params) # first moment buffer
+v = [0.0] * len(params) # second moment buffer
+# Repeat in sequence
+num_steps = 1000 # number of training steps
+for step in range(num_steps):
+    # Take single document, tokenize it, surround it with BOS special token on both sides
+    doc = docs[step % len(docs)]
+    tokens = [BOS] + [uchars.index(ch) for ch in doc] + [BOS]
+    n = min(block_size, len(tokens) - 1)
+    # Forward the token sequence through the model, building up the computation graph all the way to the loss
+    keys, values = [[] for _ in range(n_layer)], [[] for _ in range(n_layer)]
+    losses = []
+    for pos_id in range(n):
+        token_id, target_id = tokens[pos_id], tokens[pos_id + 1]
+        logits = gpt(token_id, pos_id, keys, values)
+        probs = softmax(logits)
+        loss_t = -probs[target_id].log()
+        losses.append(loss_t)
+    loss = (1 / n) * sum(losses) # final average loss over the document sequence. May yours be low.
+    # Backward the loss, calculating the gradients with respect to all model parameters
+    loss.backward()
+    # Adam optimizer update: update the model parameters based on the corresponding gradients
+    lr_t = learning_rate * (1 - step / num_steps) # linear learning rate decay
+    for i, p in enumerate(params):
+        m[i] = beta1 * m[i] + (1 - beta1) * p.grad
+        v[i] = beta2 * v[i] + (1 - beta2) * p.grad ** 2
+        m_hat = m[i] / (1 - beta1 ** (step + 1))
+        v_hat = v[i] / (1 - beta2 ** (step + 1))
+        p.data -= lr_t * m_hat / (v_hat ** 0.5 + eps_adam)
+        p.grad = 0
+    print(f"step {step+1:4d} / {num_steps:4d} | loss {loss.data:.4f}", end='\r')
+# Inference: may the model babble back to us
+temperature = 0.5 # in (0, 1], control the "creativity" of generated text, low to high
+print("\n--- inference (new, hallucinated names) ---")
+for sample_idx in range(20):
+    keys, values = [[] for _ in range(n_layer)], [[] for _ in range(n_layer)]
+    token_id = BOS
+    sample = []
+    for pos_id in range(block_size):
+        logits = gpt(token_id, pos_id, keys, values)
+        probs = softmax([l / temperature for l in logits])
+        token_id = random.choices(range(vocab_size), weights=[p.data for p in probs])[0]
+        if token_id == BOS:
+            break
+        sample.append(uchars[token_id])
+    print(f"sample {sample_idx+1:2d}: {''.join(sample)}")
+</script>
+
+<script id="engine">
+/* ---------- microgpt engine: a JavaScript port of microgpt.py ----------
+   Same algorithm. Two efficiency changes that do not alter the maths:
+   a dot product is one graph node instead of a chain of mul/add nodes,
+   and the topological sort is iterative so deep graphs cannot overflow the stack. */
+const N_EMBD = 16, BLOCK = 16, N_HEAD = 4, HEAD_DIM = N_EMBD / N_HEAD;
+const BETA1 = 0.85, BETA2 = 0.99, EPS_ADAM = 1e-8;
+
+class Value {
+  constructor(data, c, g) { this.data = data; this.grad = 0; this.c = c || null; this.g = g || null; this.seen = 0; }
+}
+const add   = (a, b) => new Value(a.data + b.data, [a, b], [1, 1]);
+const mul   = (a, b) => new Value(a.data * b.data, [a, b], [b.data, a.data]);
+const scale = (a, k) => new Value(a.data * k, [a], [k]);
+const addc  = (a, k) => new Value(a.data + k, [a], [1]);
+const powc  = (a, k) => new Value(Math.pow(a.data, k), [a], [k * Math.pow(a.data, k - 1)]);
+const vlog  = a => new Value(Math.log(a.data), [a], [1 / a.data]);
+const vexp  = a => { const e = Math.exp(a.data); return new Value(e, [a], [e]); };
+const relu  = a => new Value(Math.max(0, a.data), [a], [a.data > 0 ? 1 : 0]);
+function dot(w, x) {
+  const n = w.length, c = new Array(2 * n), g = new Array(2 * n);
+  let s = 0;
+  for (let i = 0; i < n; i++) { s += w[i].data * x[i].data; c[i] = w[i]; g[i] = x[i].data; c[n + i] = x[i]; g[n + i] = w[i].data; }
+  return new Value(s, c, g);
+}
+function vsum(xs) {
+  let s = 0; const g = new Array(xs.length);
+  for (let i = 0; i < xs.length; i++) { s += xs[i].data; g[i] = 1; }
+  return new Value(s, xs.slice(), g);
+}
+let SEEN = 0;
+function backward(root) {
+  SEEN++;
+  const topo = [], st = [root], ix = [0];
+  root.seen = SEEN;
+  while (st.length) {
+    const v = st[st.length - 1], c = v.c, i = ix[ix.length - 1];
+    if (c && i < c.length) {
+      ix[ix.length - 1] = i + 1;
+      const ch = c[i];
+      if (ch.seen !== SEEN) { ch.seen = SEEN; st.push(ch); ix.push(0); }
+    } else { topo.push(v); st.pop(); ix.pop(); }
+  }
+  root.grad = 1;
+  for (let i = topo.length - 1; i >= 0; i--) {
+    const v = topo[i], c = v.c;
+    if (!c || v.grad === 0) continue;
+    const g = v.g, vg = v.grad;
+    for (let j = 0; j < c.length; j++) c[j].grad += g[j] * vg;
+  }
+}
+const linear = (x, w) => w.map(row => dot(row, x));
+function softmax(logits) {
+  let mx = -Infinity;
+  for (const v of logits) if (v.data > mx) mx = v.data;
+  const exps = logits.map(v => vexp(addc(v, -mx)));
+  const inv = powc(vsum(exps), -1);
+  return exps.map(e => mul(e, inv));
+}
+function rmsnorm(x) {
+  const ms = scale(dot(x, x), 1 / x.length);
+  const sc = powc(addc(ms, 1e-5), -0.5);
+  return x.map(xi => mul(xi, sc));
+}
+/* One call = one token at one position. Returns every intermediate vector so the page can draw it. */
+function gpt(M, tokenId, posId, keys, vals) {
+  const sd = M.sd, t = {};
+  t.tok = sd.wte[tokenId];
+  t.pos = sd.wpe[posId];
+  t.x0 = rmsnorm(t.tok.map((a, i) => add(a, t.pos[i])));
+  // 1) multi-head attention
+  t.n1 = rmsnorm(t.x0);
+  t.q = linear(t.n1, sd.attn_wq);
+  t.k = linear(t.n1, sd.attn_wk);
+  t.v = linear(t.n1, sd.attn_wv);
+  keys.push(t.k); vals.push(t.v);
+  t.attw = []; t.heads = [];
+  for (let h = 0; h < N_HEAD; h++) {
+    const hs = h * HEAD_DIM, qh = t.q.slice(hs, hs + HEAD_DIM);
+    const al = keys.map(k => scale(dot(qh, k.slice(hs, hs + HEAD_DIM)), 1 / Math.sqrt(HEAD_DIM)));
+    const w = softmax(al);
+    t.attw.push(w);
+    for (let j = 0; j < HEAD_DIM; j++) t.heads.push(dot(w, vals.map(v => v[hs + j])));
+  }
+  t.proj = linear(t.heads, sd.attn_wo);
+  t.x1 = t.proj.map((a, i) => add(a, t.x0[i]));
+  // 2) MLP
+  t.n2 = rmsnorm(t.x1);
+  t.fc1 = linear(t.n2, sd.mlp_fc1);
+  t.relu = t.fc1.map(relu);
+  t.fc2 = linear(t.relu, sd.mlp_fc2);
+  t.x2 = t.fc2.map((a, i) => add(a, t.x1[i]));
+  t.logits = linear(t.x2, sd.lm_head);
+  return t;
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function createModel(words, o) {
+  const rng = mulberry32(o.seed);
+  const gauss = () => { let u = 0; while (u === 0) u = rng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng()); };
+  const docs = [...new Set(words)];
+  for (let i = docs.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [docs[i], docs[j]] = [docs[j], docs[i]]; }
+  const uchars = [...new Set(docs.join(''))].sort();
+  const stoi = new Map(uchars.map((c, i) => [c, i]));
+  const BOS = uchars.length, V = uchars.length + 1;
+  const matrix = (nout, nin) => Array.from({ length: nout }, () => Array.from({ length: nin }, () => new Value(gauss() * 0.08)));
+  const sd = {
+    wte: matrix(V, N_EMBD), wpe: matrix(BLOCK, N_EMBD), lm_head: matrix(V, N_EMBD),
+    attn_wq: matrix(N_EMBD, N_EMBD), attn_wk: matrix(N_EMBD, N_EMBD), attn_wv: matrix(N_EMBD, N_EMBD), attn_wo: matrix(N_EMBD, N_EMBD),
+    mlp_fc1: matrix(4 * N_EMBD, N_EMBD), mlp_fc2: matrix(N_EMBD, 4 * N_EMBD),
+  };
+  const params = [], off = {};
+  for (const name in sd) { off[name] = params.length; for (const row of sd[name]) for (const p of row) params.push(p); }
+  return { rng, docs, docset: new Set(docs), uchars, stoi, BOS, V, sd, params, off,
+           m: new Float64Array(params.length), v: new Float64Array(params.length),
+           step: 0, numSteps: o.numSteps, lr: o.lr, losses: [] };
+}
+/* Forward one document, then backward. Nothing is updated yet. */
+function forwardDoc(M) {
+  const doc = M.docs[M.step % M.docs.length];
+  const tokens = [M.BOS, ...[...doc].map(ch => M.stoi.get(ch)), M.BOS];
+  const n = Math.min(BLOCK, tokens.length - 1);
+  const keys = [], vals = [], pos = [], losses = [];
+  for (let p = 0; p < n; p++) {
+    const t = gpt(M, tokens[p], p, keys, vals);
+    const probs = softmax(t.logits);
+    const loss = scale(vlog(probs[tokens[p + 1]]), -1);
+    losses.push(loss);
+    pos.push({ t, probs, loss, token: tokens[p], target: tokens[p + 1] });
+  }
+  const loss = scale(vsum(losses), 1 / n);
+  backward(loss);
+  return { doc, tokens, n, pos, loss };
+}
+/* Work out the Adam update without applying it, so it can be shown first. */
+function adamPreview(M) {
+  const P = M.params, n = P.length, s = M.step;
+  const lr_t = M.lr * (1 - s / M.numSteps);
+  const m2 = new Float64Array(n), v2 = new Float64Array(n), delta = new Float64Array(n);
+  const c1 = 1 - Math.pow(BETA1, s + 1), c2 = 1 - Math.pow(BETA2, s + 1);
+  for (let i = 0; i < n; i++) {
+    const g = P[i].grad;
+    m2[i] = BETA1 * M.m[i] + (1 - BETA1) * g;
+    v2[i] = BETA2 * M.v[i] + (1 - BETA2) * g * g;
+    delta[i] = -lr_t * (m2[i] / c1) / (Math.sqrt(v2[i] / c2) + EPS_ADAM);
+  }
+  return { lr_t, m2, v2, delta };
+}
+function trainCommit(M, T) {
+  const P = M.params, a = T.adam;
+  for (let i = 0; i < P.length; i++) { P[i].data += a.delta[i]; P[i].grad = 0; }
+  M.m = a.m2; M.v = a.v2;
+  M.losses.push(T.loss.data);
+  M.step++;
+}
+function quickStep(M) { const T = forwardDoc(M); T.adam = adamPreview(M); trainCommit(M, T); }
+function zeroGrads(M) { for (const p of M.params) p.grad = 0; }
+function tempProbs(logits, temp) {
+  let mx = -Infinity;
+  for (const v of logits) if (v.data / temp > mx) mx = v.data / temp;
+  const ex = logits.map(v => Math.exp(v.data / temp - mx));
+  const tot = ex.reduce((a, b) => a + b, 0);
+  return ex.map(e => e / tot);
+}
+function choice(rng, w) {
+  let r = rng() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return i; }
+  return w.length - 1;
+}
+function newGen(M) { return { tokens: [M.BOS], pos: [], keys: [], vals: [], done: false }; }
+function genPos(M, G, temp, forced) {
+  const p = G.pos.length, token = G.tokens[p];
+  const t = gpt(M, token, p, G.keys, G.vals);
+  const probs = tempProbs(t.logits, temp);
+  const isForced = forced != null;
+  const next = isForced ? forced : choice(M.rng, probs);
+  G.pos.push({ t, token, probs, next, forced: isForced, temp });
+  G.tokens.push(next);
+  G.done = next === M.BOS || p + 1 >= BLOCK;
+}
+const genName = (M, G) => G.tokens.slice(1).filter(t => t !== M.BOS).map(t => M.uchars[t]).join('');
+if (typeof module !== 'undefined') module.exports = { createModel, forwardDoc, adamPreview, trainCommit, quickStep, newGen, genPos, genName, BLOCK };
+</script>
+
+<script>
+/* ---------- the page ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+function fmt(x) { const a = Math.abs(x); if (a === 0) return '0'; if (a >= 100) return x.toFixed(0); if (a >= 1) return x.toFixed(2); if (a >= 0.01) return x.toFixed(3); return x.toExponential(1); }
+const sig = x => (x === 0 ? '0' : Number(x.toPrecision(4)).toString());
+const pct = x => (x >= 0.0995 ? (x * 100).toFixed(0) : x >= 0.001 ? (x * 100).toFixed(1) : '<0.1') + '%';
+
+const DEFAULT_WORDS = $('names').textContent.trim().split(/\s+/);
+const STAGES = ['embed', 'qkv', 'attn', 'proj', 'mlp', 'logits', 'loss'];
+const GSTAGES = ['embed', 'qkv', 'attn', 'proj', 'mlp', 'logits', 'sample'];
+const TITLES = {
+  doc: 'Pick a name and turn it into tokens', embed: 'Embed the token', qkv: 'Make a query, a key and a value',
+  attn: 'Look back at earlier tokens', proj: 'Write attention’s answer into x', mlp: 'Think it over in the MLP',
+  logits: 'Score every possible next token', loss: 'Measure how wrong the guess was', mean: 'Average the losses',
+  backward: 'Send the blame backwards', adam: 'Nudge every parameter', sample: 'Roll the dice',
+  done: 'A name is finished', finished: 'Training is finished',
+};
+const CODE_RANGES = {
+  doc: ['doc = docs[step', 3], embed: ['tok_emb = state_dict', 4], qkv: ['x_residual = x', 7], attn: ['x_attn = []', 10],
+  proj: ['x = linear(x_attn', 2], mlp: ['# 2) MLP block', 7], logits: ["logits = linear(x, state_dict['lm_head'])", 2],
+  loss: ['probs = softmax(logits)', 3], mean: ['loss = (1 / n)', 1], backward: ['loss.backward()', 1], adam: ['lr_t = learning_rate', 8],
+  sample: ['probs = softmax([l / temperature', 5], done: ['print(f"sample', 1], finished: ['# Inference: may', 1],
+};
+const MATS = [
+  ['wte', 'token embeddings', 'one row per token'], ['wpe', 'position embeddings', 'one row per position'],
+  ['attn_wq', 'query weights', '16 × 16'], ['attn_wk', 'key weights', '16 × 16'], ['attn_wv', 'value weights', '16 × 16'], ['attn_wo', 'attention output', '16 × 16'],
+  ['mlp_fc1', 'MLP expand', '16 in, 64 out'], ['mlp_fc2', 'MLP squeeze', '64 in, 16 out'], ['lm_head', 'output head', 'one row per token'],
+];
+
+let cfg = { words: DEFAULT_WORDS, seed: 42, lr: 0.01, numSteps: 1000 };
+let M, T = null, G = null, mode = 'train', frames = [], fi = 0;
+let playing = false, speed = 1, timer = null, fast = null;
+let view = 'value', gradWanted = true, viewPos = null, paramView = 'auto';
+let temp = 0.5, prefixToks = [], samples = [], lossDrawn = -1;
+const S = {}, GRP = [];
+let barVis = 110;
+
+/* ----- build the static parts of the diagram ----- */
+function mkStrip(n, cls) { const s = el('div', 'strip ' + (cls || '')); for (let i = 0; i < n; i++) s.appendChild(el('i', 'c')); return s; }
+function addRow(parent, key, label, n, cls) {
+  const s = mkStrip(n, cls), r = el('div', 'row');
+  const lab = el('span', 'lab', label), rng = el('span', 'rng');
+  r.append(lab, s, rng); s._lab = lab; s._rng = rng; S[key] = s; parent.appendChild(r);
+}
+function mkCache(title, key) {
+  const box = el('div', 'cache', `<h4>${title}</h4>`);
+  S[key] = [];
+  for (let r = 0; r < BLOCK; r++) {
+    const row = el('div', 'crow'), lab = el('span', 'lab'), s = mkStrip(N_EMBD, 'h4');
+    row.append(lab, s); s._lab = lab; s._rowEl = row; S[key].push(s); box.appendChild(row);
+  }
+  return box;
+}
+function buildFlow() {
+  for (let i = 0; i < 7; i++) GRP.push($('g' + i));
+  addRow(GRP[0], 'tok', 'wte[token]', 16);
+  addRow(GRP[0], 'pos', 'wpe[position]', 16);
+  addRow(GRP[0], 'x0', 'x', 16);
+  addRow(GRP[1], 'n1', 'norm(x)', 16);
+  addRow(GRP[1], 'q', 'query', 16, 'h4');
+  const caches = el('div', 'caches');
+  caches.append(mkCache('Keys stored so far', 'K'), mkCache('Values stored so far', 'V'));
+  GRP[1].appendChild(caches);
+  S.agrid = el('div', 'agrid'); GRP[2].appendChild(S.agrid);
+  addRow(GRP[2], 'heads', 'head outputs', 16, 'h4');
+  addRow(GRP[3], 'proj', 'attn_wo out', 16);
+  addRow(GRP[3], 'x1', 'x + attention', 16);
+  addRow(GRP[4], 'n2', 'norm(x)', 16);
+  addRow(GRP[4], 'fc1', 'fc1, 64 wide', 64, 'w64');
+  addRow(GRP[4], 'relu', 'after ReLU', 64, 'w64');
+  addRow(GRP[4], 'fc2', 'fc2, 16 wide', 16);
+  addRow(GRP[4], 'x2', 'x + MLP', 16);
+  S.logits = el('div', 'bars div'); GRP[5].appendChild(S.logits);
+  S.probs = el('div', 'bars'); GRP[6].appendChild(S.probs);
+  S.note = el('div', 'note'); GRP[6].appendChild(S.note);
+  const ramp = $('ramp');
+  for (let i = -4; i <= 4; i++) { const c = el('i', 'c ' + (i < 0 ? 'n' : 'p')); c.style.setProperty('--t', (Math.abs(i) / 4 * 100) + '%'); ramp.appendChild(c); }
+  // source listing
+  const lines = $('src').textContent.replace(/\n$/, '').split('\n');
+  const ol = $('code');
+  let inDoc = false;
+  lines.forEach(line => {
+    const li = el('li');
+    const isQ = line.trim() === '"""';
+    if (isQ || inDoc) { li.innerHTML = `<span class="cm">${esc(line)}</span>`; if (isQ) inDoc = !inDoc; }
+    else {
+      const k = line.search(/(^|\s)#/);
+      li.innerHTML = k < 0 ? esc(line) : esc(line.slice(0, k)) + `<span class="cm">${esc(line.slice(k))}</span>`;
+    }
+    ol.appendChild(li);
+  });
+  S.codeLines = lines; S.codeEls = [...ol.children];
+}
+function buildVocabParts() {
+  for (const key of ['logits', 'probs']) {
+    const b = S[key]; b.innerHTML = ''; b.style.setProperty('--n', M.V);
+    for (let i = 0; i < M.V; i++) b.appendChild(el('div', 'b', `<div class="tr"><i class="f"></i></div><span>${esc(ts(i))}</span>`));
+  }
+  const box = $('mats'); box.innerHTML = ''; S.mats = {};
+  for (const [name, title, sub] of MATS) {
+    const rows = M.sd[name], R = rows.length, C = rows[0].length, flip = R > 2 * C;
+    const cv = document.createElement('canvas'), px = 6;
+    cv.width = (flip ? R : C) * px; cv.height = (flip ? C : R) * px;
+    cv.style.width = cv.width + 'px';
+    const d = el('div', 'mat'); d.appendChild(cv);
+    d.appendChild(el('b', '', name)); d.appendChild(el('span', '', `${title}, ${sub}`));
+    box.appendChild(d); S.mats[name] = { cv, flip, px };
+  }
+  $('matTitle').textContent = `All ${M.params.length.toLocaleString('en-US')} parameters`;
+}
+
+/* ----- token labels ----- */
+const tl = id => (id === M.BOS ? 'BOS' : M.uchars[id]);
+const ts = id => (id === M.BOS ? '•' : M.uchars[id]);
+const chip = (id, extra) => `<span class="chip ${id === M.BOS ? 'bos' : ''} ${extra || ''}">${esc(tl(id))}</span>`;
+const tk = id => `<span class="tk">${esc(tl(id))}</span>`;
+
+/* ----- stepping ----- */
+function startTrainStep() {
+  viewPos = null;
+  if (M.step >= M.numSteps) { T = null; frames = [{ k: 'finished' }]; fi = 0; return; }
+  T = forwardDoc(M); T.adam = adamPreview(M);
+  frames = [{ k: 'doc' }];
+  for (let p = 0; p < T.n; p++) for (const k of STAGES) frames.push({ k, p });
+  frames.push({ k: 'mean' }, { k: 'backward' }, { k: 'adam' });
+  fi = 0;
+}
+function genNext() {
+  const p = G.pos.length;
+  genPos(M, G, temp, p < prefixToks.length ? prefixToks[p] : null);
+  for (const k of GSTAGES) frames.push({ k, p });
+  if (G.done) frames.push({ k: 'done' });
+}
+function newSample() { G = newGen(M); frames = []; genNext(); fi = 0; viewPos = null; }
+function logSample() {
+  if (!G || G.logged) return;
+  G.logged = true;
+  const name = genName(M, G);
+  samples.unshift({ name, isNew: !M.docset.has(name) });
+  if (samples.length > 60) samples.pop();
+  renderSamples();
+}
+function retemp() {
+  if (mode !== 'gen' || !G) return;
+  const lp = G.pos.length - 1;
+  if (fi >= lp * 7 + 6) return;               // the dice for this position are already shown
+  const R = G.pos[lp];
+  R.probs = tempProbs(R.t.logits, temp); R.temp = temp;
+  if (!R.forced) { R.next = choice(M.rng, R.probs); G.tokens[lp + 1] = R.next; }
+  const done = R.next === M.BOS || lp + 1 >= BLOCK;
+  if (done !== G.done) { G.done = done; if (done) frames.push({ k: 'done' }); else frames.pop(); }
+}
+function advance() {
+  viewPos = null;
+  if (fi < frames.length - 1) { fi++; return true; }
+  if (mode === 'train') {
+    if (!T) return false;
+    trainCommit(M, T); startTrainStep(); return true;
+  }
+  if (frames[fi].k === 'done') { newSample(); return true; }
+  genNext(); fi++; return true;
+}
+function dur(f) {
+  const w = { doc: 1.4, attn: 1.4, loss: 1.4, sample: 1.4, mean: 1.2, backward: 2.6, adam: 1.8, done: 1.8 }[f.k] || 1;
+  return 850 * w / speed;
+}
+function tick() {
+  if (!playing) return;
+  const ok = advance(); render();
+  if (!ok || (mode === 'train' && !T)) { pause(); return; }
+  timer = setTimeout(tick, dur(frames[fi]));
+}
+function play() { if (playing || fast || (mode === 'train' && !T)) return; playing = true; tick(); renderBar(); }
+function pause() { playing = false; clearTimeout(timer); renderBar(); }
+
+/* ----- fast training without animation ----- */
+async function fastTrain(count) {
+  if (fast) { fast.stop = true; return; }
+  if (mode !== 'train' || !T) return;
+  pause();
+  fast = { stop: false };
+  trainCommit(M, T); T = null;
+  let done = 1;
+  while (done < count && M.step < M.numSteps && !fast.stop) {
+    const t0 = performance.now();
+    while (performance.now() - t0 < 16 && done < count && M.step < M.numSteps) { quickStep(M); done++; }
+    renderBar(); drawLoss(); drawMats();
+    await new Promise(r => setTimeout(r, 0));
+  }
+  fast = null;
+  startTrainStep(); render();
+}
+
+/* ----- where are we ----- */
+function cur() {
+  const f = frames[fi];
+  if (mode === 'train') {
+    if (!T) return { f, p: null, si: -1, R: null, tokens: [], n: 0 };
+    let p = null, si = -1;
+    if (f.p != null) { p = f.p; si = STAGES.indexOf(f.k); }
+    else if (f.k !== 'doc') { p = viewPos != null ? Math.min(viewPos, T.n - 1) : T.n - 1; si = 7; }
+    return { f, p, si, R: p != null ? T.pos[p] : null, tokens: T.tokens, n: T.n };
+  }
+  let p, si;
+  if (f.p != null) { p = f.p; si = GSTAGES.indexOf(f.k); } else { p = viewPos != null ? Math.min(viewPos, G.pos.length - 1) : G.pos.length - 1; si = 7; }
+  return { f, p, si, R: G.pos[p], tokens: G.tokens, n: G.pos.length };
+}
+const gradReady = () => mode === 'train' && T && (frames[fi].k === 'backward' || frames[fi].k === 'adam');
+const A = v => (view === 'grad' ? v.grad : v.data);
+
+/* ----- drawing helpers ----- */
+function fill(strip, vals, name) {
+  const cells = strip.children;
+  strip._vals = vals; strip._name = name;
+  if (!vals) { for (const c of cells) c.className = 'c'; if (strip._rng) strip._rng.textContent = ''; return; }
+  let mx = 0; const nums = new Array(vals.length);
+  for (let i = 0; i < vals.length; i++) { nums[i] = A(vals[i]); if (Math.abs(nums[i]) > mx) mx = Math.abs(nums[i]); }
+  for (let i = 0; i < vals.length; i++) {
+    const x = nums[i], c = cells[i], t = mx > 0 ? Math.pow(Math.abs(x) / mx, 0.75) : 0;
+    c.className = 'c ' + (x >= 0 ? 'p' : 'n');
+    c.style.setProperty('--t', (t * 100).toFixed(1) + '%');
+  }
+  if (strip._rng) strip._rng.textContent = '±' + fmt(mx);
+}
+function fillBars(box, nums, kind, mark, markCls, what) {
+  const cols = box.children;
+  box.classList.toggle('div', kind === 'div');
+  let mx = 0;
+  if (nums) for (const x of nums) mx = Math.max(mx, Math.abs(x));
+  for (let i = 0; i < cols.length; i++) {
+    const col = cols[i], f = col.firstChild.firstChild;
+    col.className = 'b' + (nums && i === mark ? ' ' + markCls : '');
+    if (!nums) { f.style.height = '0'; f.style.top = kind === 'div' ? '50%' : '100%'; col.removeAttribute('data-tip'); continue; }
+    const x = nums[i], h = mx > 0 ? Math.abs(x) / mx : 0;
+    if (kind === 'div') { f.className = 'f ' + (x >= 0 ? 'p' : 'n'); f.style.height = (h * 50) + '%'; f.style.top = (x >= 0 ? 50 - h * 50 : 50) + '%'; }
+    else { f.className = 'f m'; f.style.height = (h * 100) + '%'; f.style.top = (100 - h * 100) + '%'; }
+    col.dataset.tip = `${what} for ${tl(i)}: ${kind === 'div' ? sig(x) : pct(x)}`;
+  }
+}
+
+/* ----- render: sequence ----- */
+function renderSeq(c) {
+  const box = $('seq');
+  if (mode === 'train' && !T) {
+    box.innerHTML = `<div class="seqhead"><span>All <b>${M.numSteps}</b> training steps are done.</span></div><p class="seqmsg">Switch to Generate to see what the model learned, or rebuild the model below to train again.</p>`;
+    return;
+  }
+  let head, cols = '';
+  const key = `<div class="seqkey"><span>position</span><span>input</span><span></span><span>${mode === 'train' ? 'target' : 'sampled'}</span><span>${mode === 'train' ? 'loss' : 'chance'}</span></div>`;
+  if (mode === 'train') {
+    const showMean = fi >= frames.length - 3;
+    head = `<span>Training step <b>${M.step + 1}</b> of ${M.numSteps}</span><span>Name: <b class="mono">${esc(T.doc)}</b></span>` +
+      (showMean ? `<span class="ml">mean loss <b>${T.loss.data.toFixed(3)}</b></span>` : '');
+    for (let p = 0; p < T.n; p++) {
+      const R = T.pos[p], shown = fi >= 1 + p * 7 + 6;
+      cols += `<button type="button" class="tc ${p === c.p ? 'cur' : ''}" data-p="${p}" aria-label="Go to position ${p}"><span class="pi">${p}</span>${chip(R.token)}<span class="ar">▼</span>${chip(R.target, 'tg')}<span class="lv">${shown ? R.loss.data.toFixed(2) : '&nbsp;'}</span></button>`;
+    }
+  } else {
+    const name = genName(M, { tokens: G.tokens.slice(0, 1 + shownCount()) });
+    head = `<span>Name <b>${samples.length + (G.logged ? 0 : 1)}</b> at temperature ${temp.toFixed(2)}</span><span>So far: <b class="mono">${esc(name) || '…'}</b></span><span class="ml">trained for ${M.step} of ${M.numSteps} steps</span>`;
+    for (let p = 0; p < G.pos.length; p++) {
+      const R = G.pos[p], shown = fi >= p * 7 + 6;
+      cols += `<button type="button" class="tc ${p === c.p ? 'cur' : ''}" data-p="${p}" aria-label="Go to position ${p}"><span class="pi">${p}</span>${chip(R.token)}<span class="ar">▼</span>` +
+        (shown ? chip(R.next, 'tg') : `<span class="chip tg">?</span>`) + `<span class="lv">${shown ? pct(R.probs[R.next]) : '&nbsp;'}</span></button>`;
+    }
+  }
+  box.innerHTML = `<div class="seqhead">${head}</div><div class="seqscroll"><div class="seqrow">${key}${cols}</div></div>`;
+}
+function shownCount() { let n = 0; for (let p = 0; p < G.pos.length; p++) if (fi >= p * 7 + 6) n++; return n; }
+
+/* ----- render: the flow ----- */
+function renderFlow(c) {
+  const flow = $('flow'), f = c.f, gr = gradReady();
+  view = gr && gradWanted ? 'grad' : 'value';
+  flow.classList.toggle('gradmode', view === 'grad');
+  flow.classList.toggle('bw', f.k === 'backward' && view === 'grad');
+  for (const b of $('viewSeg').children) { b.classList.toggle('on', b.dataset.v === view); b.disabled = !gr; }
+  $('viewHint').textContent = gr ? 'Green pushes the loss up, purple pushes it down.' : mode === 'train' ? 'Gradients exist after the backward pass.' : 'Generating does not compute gradients.';
+  for (let i = 0; i < 7; i++) { GRP[i].classList.toggle('active', i === c.si); GRP[i].classList.toggle('pending', i > c.si); }
+  const R = c.R, t = R ? R.t : null, p = c.p, si = c.si, on = i => t && si >= i;
+  const recs = mode === 'train' ? (T ? T.pos : []) : G.pos;
+
+  fill(S.tok, on(0) ? t.tok : null, 'wte row'); S.tok._lab.textContent = on(0) ? `wte[${tl(R.token)}]` : 'wte[token]';
+  fill(S.pos, on(0) ? t.pos : null, 'wpe row'); S.pos._lab.textContent = on(0) ? `wpe[${p}]` : 'wpe[position]';
+  fill(S.x0, on(0) ? t.x0 : null, 'x');
+  fill(S.n1, on(1) ? t.n1 : null, 'norm(x)');
+  fill(S.q, on(1) ? t.q : null, 'query');
+  const rows = mode === 'train' ? c.n : Math.max(6, (p ?? 0) + 1);
+  for (let r = 0; r < BLOCK; r++) {
+    const have = t && (r < p || (r === p && si >= 1));
+    for (const [key, fld, nm] of [['K', 'k', 'key'], ['V', 'v', 'value']]) {
+      const s = S[key][r];
+      s._rowEl.style.display = r < rows ? '' : 'none';
+      s._rowEl.classList.toggle('new', !!t && r === p && si === 1);
+      s._lab.textContent = have ? ts(c.tokens[r]) : '';
+      fill(s, have ? recs[r].t[fld] : null, `${nm} of position ${r}`);
+    }
+  }
+  // attention weights
+  const ncol = Math.max(1, mode === 'train' ? c.n : (p ?? 0) + 1);
+  let h = `<div class="arow" style="--n:${ncol}"><span class="lab"></span>`;
+  for (let j = 0; j < ncol; j++) h += `<span class="ah ${j === p ? 'cur' : ''}">${t && j <= p ? esc(ts(c.tokens[j])) : ''}</span>`;
+  h += '</div>';
+  for (let hd = 0; hd < N_HEAD; hd++) {
+    h += `<div class="arow" style="--n:${ncol}"><span class="lab">head ${hd + 1}</span>`;
+    for (let j = 0; j < ncol; j++) {
+      if (t && j > p) { h += `<i class="c fut" data-tip="Not visible from position ${p}: it comes later"></i>`; continue; }
+      if (!on(2)) { h += '<i class="c"></i>'; continue; }
+      const v = t.attw[hd][j], w = v.data;
+      if (view === 'grad') {
+        let mx = 0; for (let q = 0; q <= p; q++) mx = Math.max(mx, Math.abs(t.attw[hd][q].grad));
+        const tt = mx > 0 ? Math.pow(Math.abs(v.grad) / mx, 0.75) : 0;
+        h += `<i class="c ${v.grad >= 0 ? 'p' : 'n'}" style="--t:${(tt * 100).toFixed(1)}%" data-tip="head ${hd + 1} on ${esc(tl(c.tokens[j]))} at position ${j}: weight ${pct(w)}, gradient ${sig(v.grad)}"></i>`;
+      } else {
+        h += `<i class="c m ${w > 0.55 ? 'hi' : ''}" style="--t:${(w * 100).toFixed(1)}%" data-tip="head ${hd + 1} puts ${pct(w)} of its attention on ${esc(tl(c.tokens[j]))} at position ${j}">${Math.round(w * 100)}</i>`;
+      }
+    }
+    h += '</div>';
+  }
+  S.agrid.innerHTML = h;
+  fill(S.heads, on(2) ? t.heads : null, 'head output');
+  fill(S.proj, on(3) ? t.proj : null, 'attention output');
+  fill(S.x1, on(3) ? t.x1 : null, 'x');
+  fill(S.n2, on(4) ? t.n2 : null, 'norm(x)');
+  fill(S.fc1, on(4) ? t.fc1 : null, 'fc1');
+  fill(S.relu, on(4) ? t.relu : null, 'relu');
+  fill(S.fc2, on(4) ? t.fc2 : null, 'fc2');
+  fill(S.x2, on(4) ? t.x2 : null, 'x');
+
+  const markIdx = R ? (mode === 'train' ? R.target : R.next) : -1, markCls = mode === 'train' ? 'tgt' : 'pick';
+  fillBars(S.logits, on(5) ? t.logits.map(A) : null, 'div', mode === 'train' && on(5) ? markIdx : -1, markCls, view === 'grad' ? 'gradient of the logit' : 'logit');
+  const pr = on(6) ? (mode === 'train' ? R.probs.map(A) : R.probs) : null;
+  fillBars(S.probs, pr, view === 'grad' ? 'div' : 'prob', on(6) ? markIdx : -1, markCls, view === 'grad' ? 'gradient of the probability' : 'probability');
+  $('probH').textContent = mode === 'gen' && R ? `Probabilities after softmax at temperature ${R.temp.toFixed(2)}` : 'Probabilities after softmax';
+  let note = '';
+  if (on(6) && mode === 'train') {
+    const pp = R.probs[R.target].data;
+    note = `The right answer is ${tk(R.target)}. The model gave it <b>${pct(pp)}</b>, so the loss is −ln(${pp.toFixed(3)}) = <b>${R.loss.data.toFixed(2)}</b>.`;
+  } else if (on(6)) {
+    note = R.forced ? `You chose ${tk(R.next)} as the start. On its own the model gave it ${pct(R.probs[R.next])}.`
+                    : `The dice landed on ${tk(R.next)}, which had a <b>${pct(R.probs[R.next])}</b> chance.` + (R.next === M.BOS ? ' BOS ends the name.' : '');
+  }
+  S.note.innerHTML = note;
+}
+
+/* ----- render: explanation + code ----- */
+function nowText(c) {
+  const f = c.f, R = c.R, p = c.p;
+  switch (f.k) {
+    case 'finished': return `The learning rate has decayed to zero and all ${M.numSteps} steps are done. The final average loss over the last 25 names was <b>${avgLast(25).toFixed(2)}</b>. Switch to Generate and let the model write names of its own.`;
+    case 'doc': return `Step ${M.step + 1} takes the next name in the shuffled list, <b class="mono">${esc(T.doc)}</b>, wraps it in BOS on both sides and swaps every character for its token id. The model gets ${T.n} chances to predict the token that comes next.`;
+    case 'embed': return `Position ${p}: the input is ${tk(R.token)}. Row ${R.token} of <span class="mono">wte</span> says what this token is, row ${p} of <span class="mono">wpe</span> says where it sits. Add them and normalise. The result, <span class="mono">x</span>, is the 16-number stream every later block reads from and writes to.`;
+    case 'qkv': return `Three matrices turn x into a query (what am I looking for?), a key (what do I hold?) and a value (what will I hand over?). The key and value join the stored rows, so later positions can look back at ${tk(R.token)}.`;
+    case 'attn': {
+      if (p === 0) return `Each head compares its 4 numbers of the query with every stored key. At position 0 there is only one token to look at, itself, so every head gives it 100%. The head output is just that token's value.`;
+      let b = { w: -1 };
+      for (let h = 0; h < N_HEAD; h++) for (let j = 0; j <= p; j++) { const w = R.t.attw[h][j].data; if (w > b.w) b = { w, h, j }; }
+      return `Each head compares its 4 numbers of the query with every stored key (a dot product, divided by √4), and softmax turns the scores into weights that add up to 100%. The head's output is that weighted mix of the stored values. Sharpest right now: head ${b.h + 1} puts ${pct(b.w)} on ${tk(c.tokens[b.j])} at position ${b.j}. ${mode === 'train' ? 'Hatched squares are later tokens the model is not allowed to see.' : ''}`;
+    }
+    case 'proj': return `The four head outputs sit side by side as one 16-number vector, pass through <span class="mono">attn_wo</span>, and are added onto x. Adding instead of replacing is the residual connection: attention edits the stream and leaves the rest intact.`;
+    case 'mlp': {
+      const alive = R.t.relu.filter(v => v.data > 0).length;
+      return `The MLP works on this position alone. Normalise x, expand it to 64 numbers, set the negative ones to zero (ReLU kept ${alive} of 64 here), squeeze back to 16 and add onto x again.`;
+    }
+    case 'logits': {
+      let bi = 0; R.t.logits.forEach((v, i) => { if (v.data > R.t.logits[bi].data) bi = i; });
+      return `<span class="mono">lm_head</span> turns the final x into one score per token in the vocabulary, ${M.V} in all. A higher logit means the model thinks that token is more likely to come next. Its favourite after ${tk(R.token)} is ${tk(bi)}.`;
+    }
+    case 'loss': {
+      const pp = R.probs[R.target].data;
+      return `Softmax squashes the logits into probabilities that add up to 100%. The token that really came next was ${tk(R.target)}, and the model gave it ${pct(pp)}. Loss = −ln(${pp.toFixed(3)}) = <b>${R.loss.data.toFixed(2)}</b>. A perfect guess scores 0. A blind guess over ${M.V} tokens scores ${Math.log(M.V).toFixed(2)}.`;
+    }
+    case 'mean': return `Average the ${T.n} losses of this name: <b>${T.loss.data.toFixed(3)}</b>. That single number is what training pushes down.`;
+    case 'backward': return `<span class="mono">loss.backward()</span> walks the whole computation graph in reverse, applying the chain rule at every node. The squares now show gradients: how much the loss would rise if that number were nudged up. Click any token above to inspect its position.`;
+    case 'adam': {
+      let mx = 0; for (const d of T.adam.delta) mx = Math.max(mx, Math.abs(d));
+      return `Adam moves all ${M.params.length.toLocaleString('en-US')} parameters against their gradients. It keeps running averages of each gradient and its square, so every parameter gets its own step size. Learning rate this step: ${T.adam.lr_t.toFixed(5)}; largest change: ${fmt(mx)}. Step forward to apply it and start the next name.`;
+    }
+    case 'sample': return R.forced
+      ? `You asked the name to start with ${tk(R.next)}, so the dice are skipped here and ${tk(R.next)} becomes the next input.`
+      : `Divide the logits by the temperature (${R.temp.toFixed(2)}), softmax, then pick a token at random with those odds. Low temperature favours the top choice; high temperature spreads the odds. It landed on ${tk(R.next)}${R.next === M.BOS ? ', which ends the name.' : ', which becomes the next input.'}`;
+    case 'done': {
+      const name = genName(M, G);
+      if (!name) return `The model produced BOS straight away, so this name is empty. It happens more often before training.`;
+      return `The model wrote <b class="mono">${esc(name)}</b>. ` + (M.docset.has(name) ? `That name is in the training list, so the model has memorised it.` : `It is not in the training list: the model made it up from the patterns it learned.`) +
+        (M.step < M.numSteps ? ` The model has trained for ${M.step} of ${M.numSteps} steps; names get more name-like as training goes on.` : '');
+    }
+  }
+  return '';
+}
+function avgLast(n) { const a = M.losses.slice(-n); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; }
+function renderNow(c) {
+  $('nowT').textContent = TITLES[c.f.k];
+  $('nowP').innerHTML = nowText(c);
+  const [mk, cnt] = CODE_RANGES[c.f.k];
+  const start = S.codeLines.findIndex(l => l.includes(mk));
+  S.codeEls.forEach((li, i) => li.classList.toggle('hl', i >= start && i < start + cnt));
+  if (S.lastHl !== start) {
+    S.lastHl = start;
+    const ol = $('code'), a = S.codeEls[start], b = S.codeEls[start + cnt - 1];
+    const mid = (a.offsetTop + b.offsetTop + b.offsetHeight) / 2;
+    ol.scrollTo({ top: Math.max(0, mid - ol.clientHeight / 2), behavior: playing && speed > 2 ? 'auto' : 'smooth' });
+  }
+}
+
+/* ----- render: bar ----- */
+function renderBar() {
+  if (!M || !frames.length) return;
+  const c = cur();
+  $('playIcon').innerHTML = playing ? '<path d="M3 2h4v12H3zM9 2h4v12H9z"/>' : '<path d="M4 2l10 6-10 6z"/>';
+  $('playTxt').textContent = playing ? 'Pause' : 'Play';
+  const ended = mode === 'train' && !T && !fast;
+  $('bPlay').disabled = ended || !!fast;
+  $('bFwd').disabled = ended || !!fast; $('bBack').disabled = !!fast || fi === 0; $('bRestart').disabled = !!fast || fi === 0;
+  const sc = $('scrub'); sc.max = Math.max(1, frames.length - 1); sc.value = fi; sc.disabled = !!fast || frames.length < 2;
+  $('scrubv').textContent = `${fi + 1}/${frames.length}`;
+  $('modeTrain').classList.toggle('on', mode === 'train'); $('modeGen').classList.toggle('on', mode === 'gen');
+  $('modeGen').disabled = !!fast;
+  $('trainCtl').hidden = mode !== 'train'; $('genCtl').hidden = mode !== 'gen';
+  $('bFinish').disabled = ended || !!fast; $('b100').disabled = ended || !!fast; $('bAll').disabled = ended;
+  $('bAll').textContent = fast ? 'Stop' : 'Train to the end';
+  let s;
+  if (fast) s = `Training… step ${M.step} of ${M.numSteps}`;
+  else if (mode === 'train') s = T ? `Step ${M.step + 1} of ${M.numSteps}` + (c.f.p != null ? ` · position ${c.f.p + 1} of ${T.n}` : '') + ` · ${TITLES[c.f.k]}` : `Training finished after ${M.numSteps} steps`;
+  else s = `Writing a name` + (c.f.p != null ? ` · position ${c.f.p + 1}` : '') + ` · ${TITLES[c.f.k]}`;
+  $('status').textContent = s;
+  $('sparkv').textContent = M.losses.length ? 'loss ' + avgLast(25).toFixed(2) : 'loss —';
+  drawSpark();
+}
+
+/* ----- canvases ----- */
+let TH = null;
+function theme() {
+  const cs = getComputedStyle(document.documentElement), o = {};
+  for (const k of ['pos', 'neg', 'gpos', 'gneg', 'cell0', 'ink', 'ink2', 'line', 'mark', 'card']) {
+    const h = cs.getPropertyValue('--' + k).trim(); o[k] = h; o[k + 'RGB'] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  }
+  return o;
+}
+const mix = (a, b, t) => `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(',')})`;
+function drawMats() {
+  if (!TH) TH = theme();
+  const c = frames.length ? cur() : null, k = c ? c.f.k : '';
+  let kind = paramView;
+  if (kind === 'auto') kind = fast ? 'w' : gradReady() && k === 'backward' ? 'grad' : gradReady() && k === 'adam' ? 'upd' : 'w';
+  const avail = kind === 'w' || (!fast && gradReady() && (kind === 'grad' || k === 'adam'));
+  $('matNote').textContent = kind === 'w' ? 'Showing the weights themselves. Each map is scaled to its own largest value.'
+    : kind === 'grad' ? (avail ? 'Showing the gradient of the loss for every weight.' : 'Gradients appear once the backward pass has run.')
+    : (avail ? 'Showing the change Adam is about to make to every weight.' : 'The update appears on the Adam frame, after the backward pass.');
+  for (const b of $('matSeg').children) b.classList.toggle('on', b.dataset.k === paramView);
+  const hi = kind === 'grad' ? TH.gposRGB : TH.posRGB, lo = kind === 'grad' ? TH.gnegRGB : TH.negRGB;
+  for (const [name] of MATS) {
+    const { cv, flip, px } = S.mats[name], g = cv.getContext('2d'), rows = M.sd[name], R = rows.length, C = rows[0].length, off = M.off[name];
+    g.fillStyle = TH.cell0; g.fillRect(0, 0, cv.width, cv.height);
+    if (avail) {
+      const get = (r, q) => kind === 'w' ? rows[r][q].data : kind === 'grad' ? rows[r][q].grad : T.adam.delta[off + r * C + q];
+      let mx = 0;
+      for (let r = 0; r < R; r++) for (let q = 0; q < C; q++) mx = Math.max(mx, Math.abs(get(r, q)));
+      if (mx > 0) for (let r = 0; r < R; r++) for (let q = 0; q < C; q++) {
+        const x = get(r, q); g.fillStyle = mix(TH.cell0RGB, x >= 0 ? hi : lo, Math.pow(Math.abs(x) / mx, 0.75));
+        if (flip) g.fillRect(r * px, q * px, px, px); else g.fillRect(q * px, r * px, px, px);
+      }
+    }
+    if (c && c.R && !fast && (name === 'wte' || name === 'wpe')) {
+      const r = name === 'wte' ? c.R.token : c.p;
+      g.strokeStyle = TH.ink; g.lineWidth = 2; g.strokeRect(1, r * px + 1, cv.width - 2, px - 2);
+    }
+  }
+}
+function sizeCanvas(cv) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  return [g, w, h];
+}
+function smooth(L, n) { const out = []; let s = 0; for (let i = 0; i < L.length; i++) { s += L[i]; if (i >= n) s -= L[i - n]; out.push(s / Math.min(i + 1, n)); } return out; }
+function drawLoss() {
+  if (!TH) TH = theme();
+  const cv = $('lossc'); if (!cv.clientWidth) return;
+  const [g, w, h] = sizeCanvas(cv), L = M.losses, base = Math.log(M.V);
+  const ml = 34, mr = 12, mt = 10, mb = 22, pw = w - ml - mr, ph = h - mt - mb;
+  const ymax = Math.ceil(base + 1), X = i => ml + (i / Math.max(1, M.numSteps - 1)) * pw, Y = v => mt + (1 - Math.min(v, ymax) / ymax) * ph;
+  g.font = '11px "IBM Plex Mono", ui-monospace, monospace'; g.textBaseline = 'middle';
+  g.strokeStyle = TH.line; g.fillStyle = TH.ink2; g.lineWidth = 1;
+  for (let v = 0; v <= ymax; v++) { g.globalAlpha = v === 0 ? 1 : 0.5; g.beginPath(); g.moveTo(ml, Y(v) + .5); g.lineTo(ml + pw, Y(v) + .5); g.stroke(); g.globalAlpha = 1; g.textAlign = 'right'; g.fillText(String(v), ml - 6, Y(v)); }
+  g.textBaseline = 'top';
+  g.textAlign = 'left'; g.fillText('step 1', ml, mt + ph + 6); g.textAlign = 'right'; g.fillText('step ' + M.numSteps, ml + pw, mt + ph + 6);
+  g.setLineDash([5, 4]); g.strokeStyle = TH.ink2; g.beginPath(); g.moveTo(ml, Y(base)); g.lineTo(ml + pw, Y(base)); g.stroke(); g.setLineDash([]);
+  g.textBaseline = 'bottom'; g.fillText(`blind guess ${base.toFixed(2)}`, ml + pw, Y(base) - 3);
+  if (L.length) {
+    g.strokeStyle = TH.neg; g.globalAlpha = 0.35; g.lineWidth = 1; g.beginPath();
+    L.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v))); g.stroke(); g.globalAlpha = 1;
+    const sm = smooth(L, 25);
+    g.strokeStyle = TH.ink; g.lineWidth = 2; g.lineJoin = 'round'; g.beginPath();
+    sm.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v))); g.stroke();
+    const lx = X(L.length - 1), ly = Y(sm[sm.length - 1]);
+    g.fillStyle = TH.mark; g.strokeStyle = TH.ink; g.lineWidth = 1.5; g.beginPath(); g.arc(lx, ly, 4, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = TH.ink; g.textBaseline = 'bottom'; g.textAlign = lx > ml + pw - 60 ? 'right' : 'left';
+    g.fillText(sm[sm.length - 1].toFixed(2), lx + (g.textAlign === 'left' ? 8 : -8), ly - 6);
+  } else {
+    g.fillStyle = TH.ink2; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('The curve appears as steps finish', ml + pw / 2, mt + ph / 2);
+  }
+  lossDrawn = L.length;
+}
+function drawSpark() {
+  if (!TH) TH = theme();
+  const cv = $('spark'); if (!cv.clientWidth) return;
+  const [g, w, h] = sizeCanvas(cv), sm = smooth(M.losses, 25), ymax = Math.log(M.V) + 1;
+  g.strokeStyle = TH.line; g.beginPath(); g.moveTo(0, h - .5); g.lineTo(w, h - .5); g.stroke();
+  if (sm.length < 2) return;
+  g.strokeStyle = TH.ink; g.lineWidth = 1.5; g.beginPath();
+  sm.forEach((v, i) => { const x = i / Math.max(1, M.numSteps - 1) * w, y = 2 + (1 - Math.min(v, ymax) / ymax) * (h - 4); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.stroke();
+}
+function renderSamples() {
+  $('samples').innerHTML = samples.map(s => `<span class="${s.isNew ? 'new' : ''}" data-tip="${s.isNew ? 'Not in the training list' : 'Also in the training list'}">${esc(s.name) || '(empty)'}</span>`).join('');
+  $('samplesCap').textContent = samples.length ? 'Dashed outline: the name is not in the training list, the model invented it.' : 'Switch to Generate to make the model write names.';
+}
+
+/* ----- the main render ----- */
+function render() {
+  const c = cur();
+  if (mode === 'gen' && c.f.k === 'done') logSample();
+  renderSeq(c); renderFlow(c); renderNow(c); renderBar(); drawMats();
+  if (lossDrawn !== M.losses.length) drawLoss();
+  if (playing && c.si >= 0 && c.si < 7) {
+    const r = GRP[c.si].getBoundingClientRect(), top = barVis + 8;
+    if (r.top < top || r.bottom > window.innerHeight - 8) GRP[c.si].scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+function setMode(m) {
+  if (m === mode || fast) return;
+  pause();
+  if (m === 'gen') { if (T) { zeroGrads(M); T = null; } mode = 'gen'; newSample(); }
+  else { mode = 'train'; G = null; startTrainStep(); }
+  render();
+}
+function reset() {
+  pause(); fast && (fast.stop = true);
+  M = createModel(cfg.words, cfg);
+  T = null; G = null; mode = 'train'; samples = []; lossDrawn = -1; prefixToks = []; $('prefix').value = '';
+  buildVocabParts(); renderSamples();
+  startTrainStep();
+  fi = Math.min(frames.length - 1, 1 + Math.min(1, T.n - 1) * 7 + 6);   // open on a filled-in frame, not an empty one
+  render();
+}
+
+/* ----- wiring ----- */
+function wire() {
+  $('bPlay').onclick = () => (playing ? pause() : play());
+  $('bFwd').onclick = () => { pause(); advance(); render(); };
+  $('bBack').onclick = () => { pause(); if (fi > 0) { fi--; viewPos = null; render(); } };
+  $('bRestart').onclick = () => { pause(); fi = 0; viewPos = null; render(); };
+  $('scrub').oninput = e => { pause(); fi = +e.target.value; viewPos = null; render(); };
+  $('speedSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; speed = +b.dataset.s; for (const x of $('speedSeg').children) x.classList.toggle('on', x === b); };
+  $('modeTrain').onclick = () => setMode('train');
+  $('modeGen').onclick = () => setMode('gen');
+  $('bFinish').onclick = () => fastTrain(1);
+  $('b100').onclick = () => fastTrain(100);
+  $('bAll').onclick = () => fastTrain(Infinity);
+  $('bNew').onclick = () => { pause(); newSample(); render(); };
+  $('temp').oninput = e => { temp = +e.target.value; $('tempv').textContent = temp.toFixed(2); retemp(); render(); };
+  $('prefix').oninput = e => {
+    prefixToks = [...e.target.value.toLowerCase()].filter(ch => M.stoi.has(ch)).slice(0, BLOCK - 2).map(ch => M.stoi.get(ch));
+    pause(); newSample(); render();
+  };
+  $('viewSeg').onclick = e => { const b = e.target.closest('button'); if (!b || b.disabled) return; gradWanted = b.dataset.v === 'grad'; render(); };
+  $('matSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; paramView = b.dataset.k; drawMats(); };
+  $('seq').onclick = e => {
+    const b = e.target.closest('.tc'); if (!b) return;
+    const p = +b.dataset.p, k = frames[fi].k;
+    pause();
+    if (k === 'mean' || k === 'backward' || k === 'adam' || k === 'done') viewPos = p;
+    else { fi = (mode === 'train' ? 1 : 0) + p * 7; viewPos = null; }
+    render();
+  };
+  $('form').onsubmit = e => {
+    e.preventDefault();
+    const raw = $('words').value.toLowerCase().split(/[\s,;]+/).filter(Boolean);
+    const words = raw.length ? [...new Set(raw)] : DEFAULT_WORDS;
+    const lr = +$('lr').value, steps = Math.round(+$('steps').value), seed = Math.round(+$('seed').value) || 0;
+    let msg = '';
+    if (raw.length && words.length < 5) msg = 'Add at least 5 different words, or clear the box to use the built-in names.';
+    else if (new Set(words.join('')).size > 80) msg = 'These words use more than 80 different characters. Use a smaller alphabet.';
+    else if (!(lr > 0 && lr <= 1)) msg = 'The learning rate must be between 0 and 1. The original uses 0.01.';
+    else if (!(steps >= 10 && steps <= 20000)) msg = 'Training steps must be between 10 and 20000.';
+    $('err').textContent = msg;
+    if (msg) return;
+    cfg = { words, lr, numSteps: steps, seed };
+    reset();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input,textarea,select,button,a')) return;
+    if (e.key === ' ') { e.preventDefault(); playing ? pause() : play(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); $('bFwd').click(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); $('bBack').click(); }
+  });
+  const tip = $('tip');
+  document.addEventListener('mousemove', e => {
+    const t = e.target; let txt = null;
+    if (t.classList && t.classList.contains('c') && t.parentElement._vals) {
+      const s = t.parentElement, i = Array.prototype.indexOf.call(s.children, t), v = s._vals[i];
+      txt = `${s._name}[${i}] = ${sig(v.data)}` + (gradReady() ? `   gradient ${sig(v.grad)}` : '');
+    } else if (t.closest) { const d = t.closest('[data-tip]'); if (d) txt = d.dataset.tip; }
+    if (!txt) { tip.style.display = 'none'; return; }
+    tip.textContent = txt; tip.style.display = 'block';
+    tip.style.left = Math.max(8, Math.min(e.clientX + 12, window.innerWidth - tip.offsetWidth - 8)) + 'px';
+    tip.style.top = Math.min(e.clientY + 16, window.innerHeight - tip.offsetHeight - 8) + 'px';
+  });
+  const redraw = () => { TH = null; drawMats(); drawLoss(); drawSpark(); };
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+  new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  // On narrow screens only the transport row stays pinned; the status row scrolls away above it.
+  const measureBar = () => {
+    const bar = $('bar'), root = document.documentElement.style;
+    const hide = matchMedia('(max-width:700px)').matches ? bar.querySelectorAll('.barrow')[1].offsetHeight + 18 : 0;
+    barVis = bar.offsetHeight - hide;
+    root.setProperty('--bartop', -hide + 'px'); root.setProperty('--barh', barVis + 'px');
+  };
+  new ResizeObserver(measureBar).observe($('bar'));
+  let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { drawLoss(); drawSpark(); }, 120); });
+}
+
+buildFlow(); wire(); reset();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { drawLoss(); });
+</script>
+</body>
+</html>
